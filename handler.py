@@ -4,6 +4,7 @@ import datetime
 import os
 import requests
 import sys
+import click
 
 n_days = 7
 yesterday = datetime.datetime.today() - datetime.timedelta(days=1)
@@ -35,7 +36,8 @@ def delta(costs):
         result = 0
     return result
 
-def report_cost(event, context):
+@click.command()
+def report_cost():
 
     # Get account alias
     iam = boto3.client('iam')
@@ -66,7 +68,7 @@ def report_cost(event, context):
                 }
             }
         },
-        "Metrics": ["UnblendedCost"],
+        "Metrics": ["AmortizedCost"],
         "GroupBy": [
             {
                 "Type": "DIMENSION",
@@ -83,9 +85,12 @@ def report_cost(event, context):
     for day in result['ResultsByTime']:
         for group in day['Groups']:
             key = group['Keys'][0]
-            cost = float(group['Metrics']['UnblendedCost']['Amount'])
+            cost = float(group['Metrics']['AmortizedCost']['Amount'])
             cost_per_day_by_service[key].append(cost)
 
+#    for k, v in cost_per_day_by_service.items():
+#       print("%s: %s" % (k, v[-1]))
+#
     # Sort the map by yesterday's cost
     most_expensive_yesterday = sorted(cost_per_day_by_service.items(), key=lambda i: i[1][-1], reverse=True)
 
@@ -95,6 +100,7 @@ def report_cost(event, context):
     buffer = f"{'Service':{longest_name_len}} ${'Yday':8} {'∆%':>5} {'Last 7d':7}\n"
 
     for service_name, costs in most_expensive_yesterday[:5]:
+        print(service_name, costs)
         buffer += f"{service_name:{longest_name_len}} ${costs[-1]:8,.2f} {delta(costs):4.0f}% {sparkline(costs):7}\n"
 
     other_costs = [0.0] * n_days
@@ -105,6 +111,7 @@ def report_cost(event, context):
     buffer += f"{'Other':{longest_name_len}} ${other_costs[-1]:8,.2f} {delta(other_costs):4.0f}% {sparkline(other_costs):7}\n"
 
     total_costs = [0.0] * n_days
+    print(total_costs)
     for day_number in range(n_days):
         for service_name, costs in most_expensive_yesterday:
             try:
@@ -156,3 +163,6 @@ def report_cost(event, context):
     else:
         print(summary)
         print(buffer)
+
+if __name__ == '__main__':
+    report_cost()
